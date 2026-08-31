@@ -31,3 +31,19 @@ func TestTemplateRejectsHeaderInjectionAndUnknownVariables(t *testing.T) {
 		t.Fatal("accepted unknown template variable")
 	}
 }
+
+func TestCerberusBetaAndOpsInvitationsUseFixedOrigins(t *testing.T) {
+	for _, test := range []struct{ template, link string }{
+		{CerberusBetaInvitation, "https://console.c6s.whitekiwi.link/signup/"},
+		{CerberusOpsInvitation, "https://ops.c6s.whitekiwi.link/ops/"},
+	} {
+		request := Request{Template: test.template, Recipient: "person@example.com", Locale: "ko", Variables: map[string]string{"invitationLink": test.link}}
+		if message, err := Render(request); err != nil || message.Subject == "" {
+			t.Fatalf("Render(%q) = %#v, %v", test.template, message, err)
+		}
+		request.Variables["invitationLink"] = "https://evil.example/"
+		if _, err := Render(request); err == nil {
+			t.Fatalf("accepted attacker link for %q", test.template)
+		}
+	}
+}

@@ -8,7 +8,11 @@ import (
 	"strings"
 )
 
-const CerberusInvitation = "cerberus.organization-invitation"
+const (
+	CerberusInvitation     = "cerberus.organization-invitation"
+	CerberusBetaInvitation = "cerberus.beta-invitation"
+	CerberusOpsInvitation  = "cerberus.ops-invitation"
+)
 
 type Request struct {
 	Template  string            `json:"template"`
@@ -24,16 +28,40 @@ func Render(request Request) (Message, error) {
 	if err != nil || address.Address != strings.TrimSpace(request.Recipient) || strings.ContainsAny(address.Address, "\r\n") {
 		return Message{}, errors.New("invalid recipient")
 	}
-	if request.Template != CerberusInvitation || (request.Locale != "en" && request.Locale != "ko") || len(request.Variables) != 1 {
+	if (request.Locale != "en" && request.Locale != "ko") || len(request.Variables) != 1 {
 		return Message{}, errors.New("invalid template request")
 	}
 	link := request.Variables["invitationLink"]
 	parsed, err := url.Parse(link)
-	if err != nil || parsed.Scheme != "https" || parsed.Host != "console.c6s.whitekiwi.link" || parsed.Path != "/invitations/accept/" || parsed.RawQuery != "" || !strings.HasPrefix(parsed.Fragment, "token=") {
+	if err != nil || parsed.Scheme != "https" || parsed.RawQuery != "" {
 		return Message{}, errors.New("invalid invitation link")
 	}
-	if request.Locale == "ko" {
-		return Message{address.Address, "Cerberus", "Cerberus 조직에 초대되었습니다", fmt.Sprintf("Cerberus 조직 초대를 확인하고 수락하려면 아래 링크를 여세요.\r\n\r\n%s\r\n\r\n이 초대는 7일 후 만료됩니다. 요청한 적이 없다면 이 메일을 무시하세요.\r\n", link)}, nil
+	switch request.Template {
+	case CerberusInvitation:
+		if parsed.Host != "console.c6s.whitekiwi.link" || parsed.Path != "/invitations/accept/" || !strings.HasPrefix(parsed.Fragment, "token=") {
+			return Message{}, errors.New("invalid invitation link")
+		}
+		if request.Locale == "ko" {
+			return Message{address.Address, "Cerberus", "Cerberus 조직에 초대되었습니다", fmt.Sprintf("Cerberus 조직 초대를 확인하고 수락하려면 아래 링크를 여세요.\r\n\r\n%s\r\n\r\n이 초대는 7일 후 만료됩니다. 요청한 적이 없다면 이 메일을 무시하세요.\r\n", link)}, nil
+		}
+		return Message{address.Address, "Cerberus", "You were invited to a Cerberus organization", fmt.Sprintf("Open the link below to review and accept your Cerberus organization invitation.\r\n\r\n%s\r\n\r\nThis invitation expires in 7 days. Ignore this email if you did not expect it.\r\n", link)}, nil
+	case CerberusBetaInvitation:
+		if parsed.Host != "console.c6s.whitekiwi.link" || parsed.Path != "/signup/" || parsed.Fragment != "" {
+			return Message{}, errors.New("invalid invitation link")
+		}
+		if request.Locale == "ko" {
+			return Message{address.Address, "Cerberus", "Cerberus 비공개 베타에 초대되었습니다", fmt.Sprintf("신청이 승인되었습니다. 초대받은 이 Google 또는 Apple 이메일로 가입을 완료하세요.\r\n\r\n%s\r\n\r\n초대는 30일 후 만료됩니다. 요청한 적이 없다면 이 메일을 무시하세요.\r\n", link)}, nil
+		}
+		return Message{address.Address, "Cerberus", "Your Cerberus private beta invitation", fmt.Sprintf("Your application was approved. Complete signup with this invited Google or Apple email.\r\n\r\n%s\r\n\r\nThe invitation expires in 30 days. Ignore this email if you did not request access.\r\n", link)}, nil
+	case CerberusOpsInvitation:
+		if parsed.Host != "ops.c6s.whitekiwi.link" || parsed.Path != "/ops/" || parsed.Fragment != "" {
+			return Message{}, errors.New("invalid invitation link")
+		}
+		if request.Locale == "ko" {
+			return Message{address.Address, "Cerberus", "Cerberus 운영자로 초대되었습니다", fmt.Sprintf("초대받은 Google 이메일로 Ops에 로그인하세요.\r\n\r\n%s\r\n\r\n초대는 30일 후 만료됩니다. 요청한 적이 없다면 이 메일을 무시하세요.\r\n", link)}, nil
+		}
+		return Message{address.Address, "Cerberus", "You were invited to Cerberus Ops", fmt.Sprintf("Sign in to Ops with this invited Google email.\r\n\r\n%s\r\n\r\nThe invitation expires in 30 days. Ignore this email if you did not expect it.\r\n", link)}, nil
+	default:
+		return Message{}, errors.New("invalid template request")
 	}
-	return Message{address.Address, "Cerberus", "You were invited to a Cerberus organization", fmt.Sprintf("Open the link below to review and accept your Cerberus organization invitation.\r\n\r\n%s\r\n\r\nThis invitation expires in 7 days. Ignore this email if you did not expect it.\r\n", link)}, nil
 }

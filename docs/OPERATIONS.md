@@ -11,7 +11,11 @@ are rejected. It contains the equivalent of:
   "clients": [{
     "id": "c6s",
     "token": "RANDOM_32_BYTE_OR_LONGER_TOKEN",
-    "templates": ["cerberus.organization-invitation"]
+    "templates": [
+      "cerberus.organization-invitation",
+      "cerberus.beta-invitation",
+      "cerberus.ops-invitation"
+    ]
   }],
   "smtp_host": "SMTP_HOST",
   "smtp_port": 587,
