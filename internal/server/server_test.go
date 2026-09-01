@@ -75,3 +75,23 @@ func TestDeliveryRejectsUnauthorizedAndTemplateConfusion(t *testing.T) {
 		}
 	}
 }
+
+func TestDeliveryLogsOnlyBoundedProviderFailureStage(t *testing.T) {
+	store := &fakeStore{reservation: delivery.Reservation{ID: "eml_0123456789abcdef0123456789abcdef"}}
+	mailer := &fakeMailer{err: &delivery.ProviderError{Stage: "authenticate"}}
+	var logs bytes.Buffer
+	app, _ := New(store, mailer, []config.Client{{ID: "obsdog", Token: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG", Templates: []string{mailtemplate.ObsDogInvitation}, FromAddress: "notifications@obsdog.ai", SESConfigurationSet: "obsdog-transactional"}}, slog.New(slog.NewJSONHandler(&logs, nil)))
+	body := `{"template":"obsdog.organization-invitation","recipient":"person@example.com","locale":"en","variables":{"invitationLink":"https://app.obsdog.ai/invitations/accept/#token=secret-token-value-0123456789abcdef"}}`
+	request := httptest.NewRequest(http.MethodPost, "/v1/deliveries", bytes.NewBufferString(body))
+	request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG")
+	request.Header.Set("Idempotency-Key", "outbox-request-0002")
+	response := httptest.NewRecorder()
+	app.Handler().ServeHTTP(response, request)
+	logText := logs.String()
+	if response.Code != http.StatusServiceUnavailable || !bytes.Contains([]byte(logText), []byte(`"provider_stage":"authenticate"`)) {
+		t.Fatalf("status=%d logs=%s", response.Code, logText)
+	}
+	if bytes.Contains([]byte(logText), []byte("person@example.com")) || bytes.Contains([]byte(logText), []byte("secret-token-value")) {
+		t.Fatalf("private value leaked in logs: %s", logText)
+	}
+}

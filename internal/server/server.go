@@ -135,7 +135,7 @@ func (s *Server) deliver(w http.ResponseWriter, r *http.Request) {
 	if !reservation.Duplicate {
 		if err := s.mailer.Send(r.Context(), message); err != nil {
 			_ = s.store.Fail(r.Context(), reservation.ID, s.now().UTC())
-			s.logger.Warn("mail provider delivery failed", "delivery_id", reservation.ID)
+			s.logger.Warn("mail provider delivery failed", "delivery_id", reservation.ID, "provider_stage", delivery.ProviderFailureStage(err))
 			http.Error(w, "delivery unavailable", http.StatusServiceUnavailable)
 			return
 		}

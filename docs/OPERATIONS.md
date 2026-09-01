@@ -44,6 +44,12 @@ otherwise falls back to the top-level sender; only the reviewed `whitekiwi.link`
 and `obsdog.ai` domains are accepted. `ses_configuration_set` is likewise an
 optional per-client override so product reputation streams remain distinct.
 
+Provider failures are logged with an opaque delivery ID and one fixed stage code:
+`connect`, `start`, `starttls_required`, `starttls`, `authenticate`, `sender`,
+`recipient`, `data`, `write`, `commit`, `quit`, or `unknown`. Stage codes are safe
+operational metadata; SMTP responses, addresses, message content, configuration,
+and credentials must never be logged or returned to product clients.
+
 Readiness is `GET /readyz`; liveness is `GET /healthz`. Product calls use `POST /v1/deliveries` with `Authorization: Bearer …` and `Idempotency-Key`.
 
 Provider provisioning, DNS records, host bootstrap, database placement, backup,

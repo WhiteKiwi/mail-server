@@ -24,6 +24,20 @@ type SMTPConfig struct {
 }
 type SMTPMailer struct{ config SMTPConfig }
 
+type ProviderError struct{ Stage string }
+
+func (e *ProviderError) Error() string { return "mail provider failure: " + e.Stage }
+
+func ProviderFailureStage(err error) string {
+	var providerError *ProviderError
+	if errors.As(err, &providerError) {
+		return providerError.Stage
+	}
+	return "unknown"
+}
+
+func providerFailure(stage string) error { return &ProviderError{Stage: stage} }
+
 func NewSMTPMailer(config SMTPConfig) *SMTPMailer { return &SMTPMailer{config: config} }
 
 func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) error {
@@ -41,35 +55,35 @@ func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) err
 		connection, err = dialer.DialContext(ctx, "tcp", address)
 	}
 	if err != nil {
-		return errors.New("connect SMTP provider")
+		return providerFailure("connect")
 	}
 	defer connection.Close()
 	_ = connection.SetDeadline(time.Now().Add(20 * time.Second))
 	client, err := smtp.NewClient(connection, m.config.Host)
 	if err != nil {
-		return errors.New("start SMTP provider")
+		return providerFailure("start")
 	}
 	defer client.Close()
 	if m.config.Port != 465 {
 		if ok, _ := client.Extension("STARTTLS"); !ok {
-			return errors.New("SMTP provider requires STARTTLS")
+			return providerFailure("starttls_required")
 		}
 		if err := client.StartTLS(&tls.Config{ServerName: m.config.Host, MinVersion: tls.VersionTLS12}); err != nil {
-			return errors.New("secure SMTP provider")
+			return providerFailure("starttls")
 		}
 	}
 	if err := client.Auth(smtp.PlainAuth("", m.config.Username, m.config.Password, m.config.Host)); err != nil {
-		return errors.New("authenticate SMTP provider")
+		return providerFailure("authenticate")
 	}
 	if err := client.Mail(fromAddress); err != nil {
-		return errors.New("set sender")
+		return providerFailure("sender")
 	}
 	if err := client.Rcpt(message.Recipient); err != nil {
-		return errors.New("set recipient")
+		return providerFailure("recipient")
 	}
 	data, err := client.Data()
 	if err != nil {
-		return errors.New("open message")
+		return providerFailure("data")
 	}
 	body := "From: " + message.FromName + " <" + fromAddress + ">\r\nTo: " + message.Recipient + "\r\nSubject: " + mime.QEncoding.Encode("UTF-8", message.Subject) + "\r\n"
 	configurationSet := message.SESConfigurationSet
@@ -82,13 +96,13 @@ func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) err
 	body += "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" + message.Text
 	if _, err := io.Copy(data, bufio.NewReader(strings.NewReader(body))); err != nil {
 		_ = data.Close()
-		return errors.New("write message")
+		return providerFailure("write")
 	}
 	if err := data.Close(); err != nil {
-		return errors.New("finish message")
+		return providerFailure("commit")
 	}
 	if err := client.Quit(); err != nil {
-		return errors.New("finish SMTP provider session")
+		return providerFailure("quit")
 	}
 	return nil
 }
