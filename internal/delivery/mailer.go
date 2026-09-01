@@ -27,6 +27,10 @@ type SMTPMailer struct{ config SMTPConfig }
 func NewSMTPMailer(config SMTPConfig) *SMTPMailer { return &SMTPMailer{config: config} }
 
 func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) error {
+	fromAddress := message.FromAddress
+	if fromAddress == "" {
+		fromAddress = m.config.FromAddress
+	}
 	address := net.JoinHostPort(m.config.Host, strconv.Itoa(m.config.Port))
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	var connection net.Conn
@@ -57,7 +61,7 @@ func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) err
 	if err := client.Auth(smtp.PlainAuth("", m.config.Username, m.config.Password, m.config.Host)); err != nil {
 		return errors.New("authenticate SMTP provider")
 	}
-	if err := client.Mail(m.config.FromAddress); err != nil {
+	if err := client.Mail(fromAddress); err != nil {
 		return errors.New("set sender")
 	}
 	if err := client.Rcpt(message.Recipient); err != nil {
@@ -67,7 +71,7 @@ func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) err
 	if err != nil {
 		return errors.New("open message")
 	}
-	body := "From: " + message.FromName + " <" + m.config.FromAddress + ">\r\nTo: " + message.Recipient + "\r\nSubject: " + mime.QEncoding.Encode("UTF-8", message.Subject) + "\r\n"
+	body := "From: " + message.FromName + " <" + fromAddress + ">\r\nTo: " + message.Recipient + "\r\nSubject: " + mime.QEncoding.Encode("UTF-8", message.Subject) + "\r\n"
 	if m.config.SESConfigurationSet != "" {
 		body += "X-SES-CONFIGURATION-SET: " + m.config.SESConfigurationSet + "\r\n"
 	}

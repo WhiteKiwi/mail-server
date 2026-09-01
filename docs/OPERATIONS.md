@@ -15,7 +15,13 @@ are rejected. It contains the equivalent of:
       "cerberus.organization-invitation",
       "cerberus.beta-invitation",
       "cerberus.ops-invitation"
-    ]
+    ],
+    "from_address": "no-reply@whitekiwi.link"
+  }, {
+    "id": "obsdog",
+    "token": "ANOTHER_RANDOM_32_BYTE_OR_LONGER_TOKEN",
+    "templates": ["obsdog.organization-invitation"],
+    "from_address": "notifications@obsdog.ai"
   }],
   "smtp_host": "SMTP_HOST",
   "smtp_port": 587,
@@ -32,7 +38,9 @@ Git, logs, or CI artifacts.
 
 Provider credentials belong only in the deployer's runtime secret store. The service
 never prints them. Restrict the provider identity to the intended verified sender
-domain.
+domains. `from_address` on a client is optional for backwards compatibility and
+otherwise falls back to the top-level sender; only the reviewed `whitekiwi.link`
+and `obsdog.ai` domains are accepted.
 
 Readiness is `GET /readyz`; liveness is `GET /healthz`. Product calls use `POST /v1/deliveries` with `Authorization: Bearer …` and `Idempotency-Key`.
 

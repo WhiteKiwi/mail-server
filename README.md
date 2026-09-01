@@ -2,10 +2,10 @@
 
 Reusable transactional email delivery for WhiteKiwi products. Callers select a reviewed template; they cannot supply arbitrary sender, subject, or message bodies.
 
-The first client is Cerberus (`c6s`) with reviewed organization, private-beta, and
-Ops-operator invitation templates, sent as `Cerberus <no-reply@whitekiwi.link>`.
-PostgreSQL-backed idempotency prevents a caller retry from intentionally producing a
-second delivery.
+The reviewed clients are Cerberus (`c6s`) organization, private-beta, and Ops
+invitations plus ObsDog organization invitations. Each client has an exact
+template allowlist and sender identity; PostgreSQL-backed idempotency prevents a
+caller retry from intentionally producing a second delivery.
 
 ## Local development
 

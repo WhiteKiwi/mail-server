@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/mail"
 	"os"
 	"regexp"
 	"strconv"
@@ -13,9 +14,10 @@ import (
 )
 
 type Client struct {
-	ID        string   `json:"id"`
-	Token     string   `json:"token"`
-	Templates []string `json:"templates"`
+	ID          string   `json:"id"`
+	Token       string   `json:"token"`
+	Templates   []string `json:"templates"`
+	FromAddress string   `json:"from_address,omitempty"`
 }
 
 type Config struct {
@@ -104,7 +106,7 @@ func validate(config Config) (Config, error) {
 	}
 	if config.SMTPPort < 1 || config.SMTPPort > 65535 || config.DatabaseURL == "" || config.SMTPHost == "" ||
 		config.SMTPUsername == "" || config.SMTPPassword == "" || strings.ContainsAny(config.SMTPHost, "\r\n") ||
-		!strings.HasSuffix(strings.ToLower(config.FromAddress), "@whitekiwi.link") || strings.ContainsAny(config.FromAddress, "\r\n") ||
+		!validFromAddress(config.FromAddress) || strings.ContainsAny(config.FromAddress, "\r\n") ||
 		(config.SESConfigurationSet != "" && !configurationSetPattern.MatchString(config.SESConfigurationSet)) {
 		return Config{}, errors.New("mail runtime configuration is incomplete")
 	}
@@ -113,13 +115,27 @@ func validate(config Config) (Config, error) {
 		return Config{}, errors.New("mail clients are invalid")
 	}
 	seen := map[string]bool{}
-	for _, client := range config.Clients {
+	for index, client := range config.Clients {
 		if !clientIDPattern.MatchString(client.ID) || len(client.Token) < 43 || len(client.Templates) == 0 || seen[client.ID] {
 			return Config{}, errors.New("mail clients are invalid")
 		}
+		if client.FromAddress == "" {
+			client.FromAddress = config.FromAddress
+		}
+		client.FromAddress = strings.ToLower(client.FromAddress)
+		if !validFromAddress(client.FromAddress) || strings.ContainsAny(client.FromAddress, "\r\n") {
+			return Config{}, errors.New("mail clients are invalid")
+		}
+		config.Clients[index] = client
 		seen[client.ID] = true
 	}
 	return config, nil
+}
+
+func validFromAddress(value string) bool {
+	value = strings.ToLower(value)
+	address, err := mail.ParseAddress(value)
+	return err == nil && address.Address == value && (strings.HasSuffix(value, "@whitekiwi.link") || strings.HasSuffix(value, "@obsdog.ai"))
 }
 
 func (c Client) TokenDigest() [32]byte { return sha256.Sum256([]byte(c.Token)) }

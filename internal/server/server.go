@@ -30,6 +30,7 @@ type client struct {
 	id        string
 	token     [32]byte
 	templates map[string]bool
+	from      string
 }
 type Server struct {
 	store   Store
@@ -49,7 +50,7 @@ func New(store Store, mailer Mailer, clients []config.Client, logger *slog.Logge
 		for _, name := range item.Templates {
 			templates[name] = true
 		}
-		items = append(items, client{id: item.ID, token: item.TokenDigest(), templates: templates})
+		items = append(items, client{id: item.ID, token: item.TokenDigest(), templates: templates, from: item.FromAddress})
 	}
 	return &Server{store: store, mailer: mailer, clients: items, logger: logger, now: time.Now}, nil
 }
@@ -109,6 +110,7 @@ func (s *Server) deliver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+	message.FromAddress = actor.from
 	canonical, _ := json.Marshal(request)
 	requestDigest := sha256.Sum256(canonical)
 	recipientDigest := sha256.Sum256([]byte(strings.ToLower(message.Recipient)))

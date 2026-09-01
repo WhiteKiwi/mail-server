@@ -25,7 +25,7 @@ func TestLoadProtectedJSONFile(t *testing.T) {
 	}
 	t.Setenv("MAIL_CONFIG_FILE", path)
 	cfg, err := Load()
-	if err != nil || cfg.ListenAddress != "127.0.0.1:8092" || cfg.SESConfigurationSet != "whitekiwi-transactional" {
+	if err != nil || cfg.ListenAddress != "127.0.0.1:8092" || cfg.SESConfigurationSet != "whitekiwi-transactional" || cfg.Clients[0].FromAddress != "no-reply@whitekiwi.link" {
 		t.Fatalf("cfg=%#v err=%v", cfg, err)
 	}
 }
