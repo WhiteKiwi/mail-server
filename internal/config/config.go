@@ -14,10 +14,11 @@ import (
 )
 
 type Client struct {
-	ID          string   `json:"id"`
-	Token       string   `json:"token"`
-	Templates   []string `json:"templates"`
-	FromAddress string   `json:"from_address,omitempty"`
+	ID                  string   `json:"id"`
+	Token               string   `json:"token"`
+	Templates           []string `json:"templates"`
+	FromAddress         string   `json:"from_address,omitempty"`
+	SESConfigurationSet string   `json:"ses_configuration_set,omitempty"`
 }
 
 type Config struct {
@@ -124,6 +125,12 @@ func validate(config Config) (Config, error) {
 		}
 		client.FromAddress = strings.ToLower(client.FromAddress)
 		if !validFromAddress(client.FromAddress) || strings.ContainsAny(client.FromAddress, "\r\n") {
+			return Config{}, errors.New("mail clients are invalid")
+		}
+		if client.SESConfigurationSet == "" {
+			client.SESConfigurationSet = config.SESConfigurationSet
+		}
+		if client.SESConfigurationSet != "" && !configurationSetPattern.MatchString(client.SESConfigurationSet) {
 			return Config{}, errors.New("mail clients are invalid")
 		}
 		config.Clients[index] = client

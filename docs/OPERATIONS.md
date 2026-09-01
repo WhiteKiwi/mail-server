@@ -21,7 +21,8 @@ are rejected. It contains the equivalent of:
     "id": "obsdog",
     "token": "ANOTHER_RANDOM_32_BYTE_OR_LONGER_TOKEN",
     "templates": ["obsdog.organization-invitation"],
-    "from_address": "notifications@obsdog.ai"
+    "from_address": "notifications@obsdog.ai",
+    "ses_configuration_set": "obsdog-transactional"
   }],
   "smtp_host": "SMTP_HOST",
   "smtp_port": 587,
@@ -40,7 +41,8 @@ Provider credentials belong only in the deployer's runtime secret store. The ser
 never prints them. Restrict the provider identity to the intended verified sender
 domains. `from_address` on a client is optional for backwards compatibility and
 otherwise falls back to the top-level sender; only the reviewed `whitekiwi.link`
-and `obsdog.ai` domains are accepted.
+and `obsdog.ai` domains are accepted. `ses_configuration_set` is likewise an
+optional per-client override so product reputation streams remain distinct.
 
 Readiness is `GET /readyz`; liveness is `GET /healthz`. Product calls use `POST /v1/deliveries` with `Authorization: Bearer …` and `Idempotency-Key`.
 

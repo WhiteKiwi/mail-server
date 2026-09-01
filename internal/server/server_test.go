@@ -45,14 +45,14 @@ func TestDeliveryAuthenticatesScopesAndAvoidsSecretLogs(t *testing.T) {
 	store := &fakeStore{reservation: delivery.Reservation{ID: "eml_0123456789abcdef0123456789abcdef"}}
 	mailer := &fakeMailer{}
 	var logs bytes.Buffer
-	app, _ := New(store, mailer, []config.Client{{ID: "c6s", Token: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG", Templates: []string{mailtemplate.CerberusInvitation}, FromAddress: "no-reply@whitekiwi.link"}}, slog.New(slog.NewJSONHandler(&logs, nil)))
+	app, _ := New(store, mailer, []config.Client{{ID: "c6s", Token: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG", Templates: []string{mailtemplate.CerberusInvitation}, FromAddress: "no-reply@whitekiwi.link", SESConfigurationSet: "whitekiwi-transactional"}}, slog.New(slog.NewJSONHandler(&logs, nil)))
 	body := `{"template":"cerberus.organization-invitation","recipient":"person@example.com","locale":"en","variables":{"invitationLink":"https://console.c6s.whitekiwi.link/invitations/accept/#token=secret-token-value-0123456789abcdef"}}`
 	request := httptest.NewRequest(http.MethodPost, "/v1/deliveries", bytes.NewBufferString(body))
 	request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG")
 	request.Header.Set("Idempotency-Key", "outbox-request-0001")
 	response := httptest.NewRecorder()
 	app.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusAccepted || store.completed == "" || mailer.message.Recipient != "person@example.com" || mailer.message.FromAddress != "no-reply@whitekiwi.link" {
+	if response.Code != http.StatusAccepted || store.completed == "" || mailer.message.Recipient != "person@example.com" || mailer.message.FromAddress != "no-reply@whitekiwi.link" || mailer.message.SESConfigurationSet != "whitekiwi-transactional" {
 		t.Fatalf("status=%d store=%#v mail=%#v body=%s", response.Code, store, mailer.message, response.Body.String())
 	}
 	logText, _ := io.ReadAll(&logs)

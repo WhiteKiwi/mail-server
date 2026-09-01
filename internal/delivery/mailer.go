@@ -72,8 +72,12 @@ func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) err
 		return errors.New("open message")
 	}
 	body := "From: " + message.FromName + " <" + fromAddress + ">\r\nTo: " + message.Recipient + "\r\nSubject: " + mime.QEncoding.Encode("UTF-8", message.Subject) + "\r\n"
-	if m.config.SESConfigurationSet != "" {
-		body += "X-SES-CONFIGURATION-SET: " + m.config.SESConfigurationSet + "\r\n"
+	configurationSet := message.SESConfigurationSet
+	if configurationSet == "" {
+		configurationSet = m.config.SESConfigurationSet
+	}
+	if configurationSet != "" {
+		body += "X-SES-CONFIGURATION-SET: " + configurationSet + "\r\n"
 	}
 	body += "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" + message.Text
 	if _, err := io.Copy(data, bufio.NewReader(strings.NewReader(body))); err != nil {

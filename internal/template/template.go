@@ -22,7 +22,7 @@ type Request struct {
 	Variables map[string]string `json:"variables"`
 }
 
-type Message struct{ Recipient, FromAddress, FromName, Subject, Text string }
+type Message struct{ Recipient, FromAddress, FromName, Subject, Text, SESConfigurationSet string }
 
 func Render(request Request) (Message, error) {
 	address, err := mail.ParseAddress(strings.TrimSpace(request.Recipient))
