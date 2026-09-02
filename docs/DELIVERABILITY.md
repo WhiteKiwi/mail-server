@@ -13,7 +13,8 @@ first production message:
 5. verify a received message reports aligned `spf=pass`, `dkim=pass`, and
    `dmarc=pass`, uses TLS, and follows RFC 5322;
 6. attach an SES configuration set for delivery, hard-bounce, complaint, reject,
-   and delay events, and enable account-level suppression;
+   and delay events, include the source-owned opaque delivery tag, verify SNS
+   signatures before correlation, and enable account-level suppression;
 7. alarm before hard bounce reaches 5% or complaint reaches 0.1%, and monitor Gmail
    Postmaster Tools with a target spam rate below 0.3%.
 

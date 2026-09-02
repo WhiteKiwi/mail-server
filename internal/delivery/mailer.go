@@ -93,6 +93,13 @@ func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) err
 	if configurationSet != "" {
 		body += "X-SES-CONFIGURATION-SET: " + configurationSet + "\r\n"
 	}
+	if message.EventReference != "" {
+		if !validEventReference(message.EventReference) {
+			_ = data.Close()
+			return providerFailure("message")
+		}
+		body += "X-SES-MESSAGE-TAGS: whitekiwi_delivery_id=" + message.EventReference + "\r\n"
+	}
 	body += "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" + message.Text
 	if _, err := io.Copy(data, bufio.NewReader(strings.NewReader(body))); err != nil {
 		_ = data.Close()
@@ -105,4 +112,17 @@ func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) err
 		return providerFailure("quit")
 	}
 	return nil
+}
+
+func validEventReference(value string) bool {
+	if len(value) < 5 || len(value) > 64 || !strings.HasPrefix(value, "eml_") {
+		return false
+	}
+	for _, candidate := range value[4:] {
+		if (candidate >= 'a' && candidate <= 'z') || (candidate >= '0' && candidate <= '9') || candidate == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }

@@ -9,6 +9,10 @@ Security boundaries:
 - A client token is scoped to an explicit template allowlist.
 - Recipient plaintext and rendered bodies are never persisted or logged.
 - Delivery records contain SHA-256 digests, template identity, state, and timestamps only.
+- Each provider submission carries the opaque local delivery ID as the bounded
+  SES message tag `whitekiwi_delivery_id`. SES event publishing can therefore
+  correlate delivery, bounce, and complaint outcomes without recipient
+  plaintext, rendered content, or invitation tokens.
 - The default listener is loopback. Public ingress requires TLS and an additional network allowlist.
 
 The API is deliberately not a general email relay. Adding a template requires source review, validation rules, tests, and an explicit client allowlist entry. Host identity, database placement, backup policy, and release activation belong to the deployer's private infrastructure configuration.

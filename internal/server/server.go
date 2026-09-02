@@ -133,6 +133,7 @@ func (s *Server) deliver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !reservation.Duplicate {
+		message.EventReference = reservation.ID
 		if err := s.mailer.Send(r.Context(), message); err != nil {
 			_ = s.store.Fail(r.Context(), reservation.ID, s.now().UTC())
 			s.logger.Warn("mail provider delivery failed", "delivery_id", reservation.ID, "provider_stage", delivery.ProviderFailureStage(err))

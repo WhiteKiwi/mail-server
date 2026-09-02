@@ -52,7 +52,7 @@ func TestDeliveryAuthenticatesScopesAndAvoidsSecretLogs(t *testing.T) {
 	request.Header.Set("Idempotency-Key", "outbox-request-0001")
 	response := httptest.NewRecorder()
 	app.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusAccepted || store.completed == "" || mailer.message.Recipient != "person@example.com" || mailer.message.FromAddress != "no-reply@whitekiwi.link" || mailer.message.SESConfigurationSet != "whitekiwi-transactional" {
+	if response.Code != http.StatusAccepted || store.completed == "" || mailer.message.Recipient != "person@example.com" || mailer.message.FromAddress != "no-reply@whitekiwi.link" || mailer.message.SESConfigurationSet != "whitekiwi-transactional" || mailer.message.EventReference != store.reservation.ID {
 		t.Fatalf("status=%d store=%#v mail=%#v body=%s", response.Code, store, mailer.message, response.Body.String())
 	}
 	logText, _ := io.ReadAll(&logs)
