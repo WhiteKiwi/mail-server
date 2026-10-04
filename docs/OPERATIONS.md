@@ -1,5 +1,18 @@
 # Operations
 
+Run `mail-server migrate` in a separate operator process with
+`MAIL_MIGRATION_DATABASE_URL` supplied through protected process configuration.
+There is no fallback to the runtime URL, no SMTP/client credential requirement and
+no listener or SMTP delivery in this command. Run it before activating a compatible
+server release. Ordinary startup verifies required columns and deduplication
+indexes in a bounded read-only transaction; it fails closed when unprepared.
+
+Runtime `database_url` needs only CONNECT, schema USAGE and SELECT/INSERT/UPDATE on
+`public.mail_deliveries`. Keep bootstrap/migration credentials outside the runtime
+account's readable files and environment. Existing ownership/grants, default
+privileges, backup/restore and activation must be qualified together by the host.
+This source change does not rotate a credential or migrate an installed service.
+
 Production should set `MAIL_CONFIG_FILE` to a protected JSON file. The file must be
 regular and no more permissive than `0640`; unknown fields and trailing documents
 are rejected. It contains the equivalent of:

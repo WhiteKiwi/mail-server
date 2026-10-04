@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,6 +20,19 @@ var version = "development"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	if len(os.Args) == 2 && os.Args[1] == "migrate" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := migrate(ctx, os.Getenv("MAIL_MIGRATION_DATABASE_URL")); err != nil {
+			logger.Error("explicit mail database migration failed")
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) != 1 {
+		logger.Error("unsupported arguments")
+		os.Exit(2)
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Error("invalid runtime configuration", "error", err)
@@ -30,8 +44,8 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
-	if err := store.Migrate(context.Background(), migrations.Initial); err != nil {
-		logger.Error("migrate mail database failed")
+	if err := store.VerifySchema(context.Background()); err != nil {
+		logger.Error("mail database schema is not ready; run explicit migrate before startup")
 		os.Exit(1)
 	}
 	mailer := delivery.NewSMTPMailer(delivery.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, FromAddress: cfg.FromAddress, SESConfigurationSet: cfg.SESConfigurationSet})
@@ -56,4 +70,16 @@ func main() {
 		logger.Error("mail server stopped")
 		os.Exit(1)
 	}
+}
+
+func migrate(ctx context.Context, databaseURL string) error {
+	if databaseURL == "" {
+		return fmt.Errorf("MAIL_MIGRATION_DATABASE_URL is required")
+	}
+	store, err := delivery.Open(ctx, databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	return store.Migrate(ctx, migrations.Initial)
 }
