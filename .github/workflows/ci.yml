@@ -14,15 +14,14 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Only owner-triggered code from this repository uses the persistent worker.
+    runs-on: ${{ fromJSON(github.actor == github.repository_owner && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == github.repository_owner)) && '["self-hosted","Linux","X64","whitekiwi-linux-mail-server"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 10
     services:
       postgres:
-        image: postgres:18-alpine
+        image: docker.io/library/postgres:18-alpine
         env:
           POSTGRES_PASSWORD: integration-only
-        ports:
-          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
@@ -40,6 +39,7 @@ jobs:
       - name: Validate migrations twice
         env:
           PGPASSWORD: integration-only
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: |
-          psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -f internal/migrations/001_initial.sql
-          psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -f internal/migrations/001_initial.sql
+          docker exec --env PGPASSWORD -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres < internal/migrations/001_initial.sql
+          docker exec --env PGPASSWORD -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres < internal/migrations/001_initial.sql
