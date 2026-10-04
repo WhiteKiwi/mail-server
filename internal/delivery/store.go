@@ -17,11 +17,18 @@ var ErrInProgress = errors.New("delivery in progress")
 type Store struct{ pool *pgxpool.Pool }
 
 func Open(ctx context.Context, databaseURL string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
+	poolConfig, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, errors.New("invalid mail database configuration")
+	}
+	poolConfig.ConnConfig.ConnectTimeout = 5 * time.Second
+	connectContext, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	pool, err := pgxpool.NewWithConfig(connectContext, poolConfig)
 	if err != nil {
 		return nil, err
 	}
-	if err := pool.Ping(ctx); err != nil {
+	if err := pool.Ping(connectContext); err != nil {
 		pool.Close()
 		return nil, err
 	}
