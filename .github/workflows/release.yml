@@ -9,6 +9,11 @@ on:
         description: Existing release tag to publish
         required: true
         type: string
+      verify-only:
+        description: Validate and package without publishing a release
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -19,7 +24,7 @@ concurrency:
 
 jobs:
   release:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(github.actor == github.repository_owner && '["self-hosted","Linux","X64","whitekiwi-linux-mail-server"]' || '["ubuntu-24.04"]') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,6 +57,7 @@ jobs:
           cd dist
           sha256sum "mail-server_${RELEASE_TAG}_macOS_arm64.tar.gz" >checksums.txt
       - name: Publish GitHub release
+        if: github.event_name != 'workflow_dispatch' || !inputs.verify-only
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
