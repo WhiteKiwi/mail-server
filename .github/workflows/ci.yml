@@ -22,12 +22,19 @@ jobs:
         image: docker.io/library/postgres:18-alpine
         env:
           POSTGRES_PASSWORD: integration-only
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
+      - name: Wait for PostgreSQL
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          for attempt in $(seq 1 30); do
+            if docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres; then
+              exit 0
+            fi
+            printf 'PostgreSQL not ready (%s/30)\n' "$attempt"
+            sleep 2
+          done
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

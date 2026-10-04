@@ -14,7 +14,8 @@ CI keeps formatting, race tests, vet and two migration applications. PostgreSQL
 uses the fully qualified `docker.io/library/postgres:18-alpine` image, and SQL is
 sent to `psql` inside the service container. There is no fixed host port or host
 PostgreSQL client dependency. This works with Docker on hosted runners and the
-worker's rootless Podman Docker CLI.
+worker's rootless Podman Docker CLI. Readiness uses bounded `pg_isready` polling
+inside the container, avoiding a dependency on Podman's systemd health timers.
 
 Owner-triggered release jobs use the same Ubuntu label. The macOS arm64 binary is
 cross-compiled with CGO disabled. The existing release publishing contract stays
