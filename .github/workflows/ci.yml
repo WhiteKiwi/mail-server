@@ -22,8 +22,9 @@ jobs:
         image: docker.io/library/postgres:18-alpine
         env:
           POSTGRES_PASSWORD: integration-only
+        # All rootless scopes share host ports; reserve Mail's dynamic range.
         ports:
-          - 5432
+          - "127.0.0.1:16000-16999:5432/tcp"
     steps:
       - name: Wait for PostgreSQL
         env:
