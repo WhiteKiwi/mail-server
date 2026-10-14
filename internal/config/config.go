@@ -34,10 +34,30 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	var cfg Config
+	var err error
 	if path := os.Getenv("MAIL_CONFIG_FILE"); path != "" {
-		return loadFile(path)
+		cfg, err = loadFile(path)
+	} else {
+		cfg, err = loadEnvironment()
 	}
-	return loadEnvironment()
+	if err != nil {
+		return Config{}, err
+	}
+	return runtimeTransport(cfg)
+}
+
+func runtimeTransport(cfg Config) (Config, error) {
+	switch os.Getenv("MAIL_DATABASE_TRANSPORT") {
+	case "", "native":
+		return cfg, nil
+	case "docker-desktop":
+		if cfg.ListenAddress == "127.0.0.1:8092" {
+			cfg.ListenAddress = "0.0.0.0:8092"
+			return cfg, nil
+		}
+	}
+	return Config{}, errors.New("mail runtime transport rejected")
 }
 
 func loadFile(path string) (Config, error) {

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -17,7 +18,7 @@ var ErrInProgress = errors.New("delivery in progress")
 type Store struct{ pool *pgxpool.Pool }
 
 func Open(ctx context.Context, databaseURL string) (*Store, error) {
-	poolConfig, err := pgxpool.ParseConfig(databaseURL)
+	poolConfig, err := runtimePoolConfig(databaseURL)
 	if err != nil {
 		return nil, errors.New("invalid mail database configuration")
 	}
@@ -33,6 +34,24 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 		return nil, err
 	}
 	return &Store{pool: pool}, nil
+}
+
+func runtimePoolConfig(databaseURL string) (*pgxpool.Config, error) {
+	cfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, errors.New("invalid mail database configuration")
+	}
+	switch os.Getenv("MAIL_DATABASE_TRANSPORT") {
+	case "", "native":
+		return cfg, nil
+	case "docker-desktop":
+		if cfg.ConnConfig.Host == "127.0.0.1" && cfg.ConnConfig.Port == 25432 && cfg.ConnConfig.Database == "mail" && cfg.ConnConfig.User == "mail_runtime" && cfg.ConnConfig.TLSConfig == nil && cfg.ConnConfig.RuntimeParams["role"] == "" {
+			cfg.ConnConfig.Host = "host.docker.internal"
+			cfg.ConnConfig.Fallbacks = nil
+			return cfg, nil
+		}
+	}
+	return nil, errors.New("mail database transport rejected")
 }
 
 func (s *Store) Close()                          { s.pool.Close() }

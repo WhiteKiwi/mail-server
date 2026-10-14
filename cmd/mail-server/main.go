@@ -20,6 +20,15 @@ var version = "development"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	if len(os.Args) == 2 && os.Args[1] == "check-runtime" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := checkRuntime(ctx); err != nil {
+			logger.Error("mail runtime admission failed")
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "migrate" {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -73,6 +82,9 @@ func main() {
 }
 
 func migrate(ctx context.Context, databaseURL string) error {
+	if os.Getenv("MAIL_DATABASE_TRANSPORT") == "docker-desktop" {
+		return fmt.Errorf("Docker Desktop transport is runtime only")
+	}
 	if databaseURL == "" {
 		return fmt.Errorf("MAIL_MIGRATION_DATABASE_URL is required")
 	}
@@ -82,4 +94,17 @@ func migrate(ctx context.Context, databaseURL string) error {
 	}
 	defer store.Close()
 	return store.Migrate(ctx, migrations.Initial)
+}
+
+func checkRuntime(ctx context.Context) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	store, err := delivery.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	return store.VerifySchema(ctx)
 }
