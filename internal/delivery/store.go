@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -46,8 +47,16 @@ func New(ctx context.Context, databaseURL string) (*Store, error) {
 		poolConfig.MaxConns = 5
 	}
 	schema := os.Getenv("MAIL_DATABASE_SCHEMA")
+	selected := strings.ReplaceAll(poolConfig.ConnConfig.RuntimeParams["search_path"], " ", "")
 	if schema == "" {
-		schema = "public"
+		if selected == "app,pg_catalog" {
+			schema = "app"
+		} else {
+			schema = "public"
+		}
+	}
+	if selected != "" && selected != schema+",pg_catalog" {
+		return nil, errors.New("database schema and search_path differ")
 	}
 	if schema != "public" && schema != "app" {
 		return nil, errors.New("invalid mail database schema")

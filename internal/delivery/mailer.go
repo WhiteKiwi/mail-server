@@ -41,10 +41,6 @@ func providerFailure(stage string) error { return &ProviderError{Stage: stage} }
 func NewSMTPMailer(config SMTPConfig) *SMTPMailer { return &SMTPMailer{config: config} }
 
 func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) error {
-	fromAddress := message.FromAddress
-	if fromAddress == "" {
-		fromAddress = m.config.FromAddress
-	}
 	address := net.JoinHostPort(m.config.Host, strconv.Itoa(m.config.Port))
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	var connection net.Conn
@@ -57,6 +53,15 @@ func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) err
 	}
 	if err != nil {
 		return providerFailure("connect")
+	}
+	return m.sendConnected(ctx, connection, message)
+}
+
+// sendConnected owns an already established SMTP transport (TLS on port465).
+func (m *SMTPMailer) sendConnected(ctx context.Context, connection net.Conn, message mailtemplate.Message) error {
+	fromAddress := message.FromAddress
+	if fromAddress == "" {
+		fromAddress = m.config.FromAddress
 	}
 	defer connection.Close()
 	deadline := time.Now().Add(20 * time.Second)
@@ -115,9 +120,11 @@ func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) err
 	if err := data.Close(); err != nil {
 		return providerFailure("commit")
 	}
-	if err := client.Quit(); err != nil {
-		return providerFailure("quit")
-	}
+	// DATA's successful final reply is provider acceptance. Cancellation or
+	// QUIT failure after that point must not turn a known send into a retry.
+	stopCancellation()
+	_ = connection.SetDeadline(time.Now().Add(2 * time.Second))
+	_ = client.Quit()
 	return nil
 }
 
