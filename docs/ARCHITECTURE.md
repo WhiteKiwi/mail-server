@@ -16,3 +16,9 @@ Security boundaries:
 - The default listener is loopback. Public ingress requires TLS and an additional network allowlist.
 
 The API is deliberately not a general email relay. Adding a template requires source review, validation rules, tests, and an explicit client allowlist entry. Host identity, database placement, backup policy, and release activation belong to the deployer's private infrastructure configuration.
+
+The K3s deployment uses authenticated internal HTTP behind exact namespace/Pod
+network policy peers. It publishes no external ingress. `/healthz` reports only
+application health. Database/schema failures reject delivery requests with 503
+and never prevent HTTP startup or make the health endpoint fail. Schema admission
+runs read-only before reservation; DDL remains an explicit operator action.

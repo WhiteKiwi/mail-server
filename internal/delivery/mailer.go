@@ -50,7 +50,8 @@ func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) err
 	var connection net.Conn
 	var err error
 	if m.config.Port == 465 {
-		connection, err = tls.DialWithDialer(dialer, "tcp", address, &tls.Config{ServerName: m.config.Host, MinVersion: tls.VersionTLS12})
+		tlsDialer := tls.Dialer{NetDialer: dialer, Config: &tls.Config{ServerName: m.config.Host, MinVersion: tls.VersionTLS12}}
+		connection, err = tlsDialer.DialContext(ctx, "tcp", address)
 	} else {
 		connection, err = dialer.DialContext(ctx, "tcp", address)
 	}
@@ -58,7 +59,13 @@ func (m *SMTPMailer) Send(ctx context.Context, message mailtemplate.Message) err
 		return providerFailure("connect")
 	}
 	defer connection.Close()
-	_ = connection.SetDeadline(time.Now().Add(20 * time.Second))
+	deadline := time.Now().Add(20 * time.Second)
+	if requestDeadline, ok := ctx.Deadline(); ok && requestDeadline.Before(deadline) {
+		deadline = requestDeadline
+	}
+	_ = connection.SetDeadline(deadline)
+	stopCancellation := context.AfterFunc(ctx, func() { _ = connection.Close() })
+	defer stopCancellation()
 	client, err := smtp.NewClient(connection, m.config.Host)
 	if err != nil {
 		return providerFailure("start")

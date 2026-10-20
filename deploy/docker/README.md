@@ -4,7 +4,7 @@ Build a Linux ARM64 `CGO_ENABLED=0` binary on the operator host with the committ
 Go/module pins and `-trimpath`. Copy only that binary, Dockerfile and healthcheck
 into a fresh credential-free runtime context. The pinned Node base is shared
 with the other apps; its public CA bundle supplies Go's SMTP TLS trust and its
-short-lived healthcheck reads `/readyz`. The Go server is the long-lived process.
+short-lived healthcheck reads `/healthz`. The Go server is the long-lived process.
 
 Infra publishes only host loopback8092 and mounts one private configuration
 directory read-only. `MAIL_CONFIG_FILE=/run/mail/production.json` retains the

@@ -9,7 +9,7 @@ import (
 )
 
 // VerifySchema performs no DDL or delivery writes. Missing columns, types,
-// nullability or the indexes needed for deduplication fail before HTTP startup.
+// nullability or the indexes needed for deduplication fail before a delivery.
 func (s *Store) VerifySchema(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -31,7 +31,7 @@ func (s *Store) VerifySchema(ctx context.Context) error {
 		), columns_valid AS (
 			SELECT NOT EXISTS (SELECT 1 FROM required r WHERE NOT EXISTS (
 				SELECT 1 FROM pg_catalog.pg_attribute a
-				WHERE a.attrelid=to_regclass('public.mail_deliveries')
+				WHERE a.attrelid=to_regclass($1)
 				AND a.attname=r.name AND NOT a.attisdropped
 				AND a.atttypid::regtype::text=r.type AND a.attnotnull=(NOT r.nullable)
 			)) AS valid
@@ -40,7 +40,7 @@ func (s *Store) VerifySchema(ctx context.Context) error {
 				ARRAY(SELECT a.attname::text FROM unnest(i.indkey) WITH ORDINALITY k(n, pos)
 				JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.n
 				WHERE k.pos <= i.indnkeyatts ORDER BY k.pos) AS names
-			FROM pg_catalog.pg_index i WHERE i.indrelid=to_regclass('public.mail_deliveries')
+			FROM pg_catalog.pg_index i WHERE i.indrelid=to_regclass($1)
 			AND i.indisvalid AND i.indisready AND i.indimmediate
 			AND i.indpred IS NULL AND i.indexprs IS NULL
 		)
@@ -50,9 +50,9 @@ func (s *Store) VerifySchema(ctx context.Context) error {
 		AND EXISTS (SELECT 1 FROM indexes WHERE names=ARRAY['updated_at'])
 		AND EXISTS (SELECT 1 FROM pg_catalog.pg_attrdef d JOIN pg_catalog.pg_attribute a
 			ON a.attrelid=d.adrelid AND a.attnum=d.adnum
-			WHERE d.adrelid=to_regclass('public.mail_deliveries') AND a.attname='attempt_count'
+			WHERE d.adrelid=to_regclass($1) AND a.attname='attempt_count'
 			AND pg_get_expr(d.adbin,d.adrelid)='1')
-	`).Scan(&valid)
+	`, s.table()).Scan(&valid)
 	if err != nil || !valid {
 		return errors.New("mail database schema is unavailable or incompatible")
 	}
