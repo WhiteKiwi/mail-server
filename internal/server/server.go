@@ -18,7 +18,6 @@ import (
 )
 
 type Store interface {
-	Ready(context.Context) error
 	Reserve(context.Context, string, [32]byte, [32]byte, [32]byte, string, time.Time) (delivery.Reservation, error)
 	Complete(context.Context, string, time.Time) error
 	Fail(context.Context, string, time.Time) error
@@ -59,7 +58,6 @@ func New(store Store, mailer Mailer, clients []config.Client, logger *slog.Logge
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("POST /v1/deliveries", s.deliver)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -68,17 +66,10 @@ func (s *Server) Handler() http.Handler {
 	})
 }
 
-func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-	defer cancel()
-	if s.store.Ready(ctx) != nil {
-		http.Error(w, "not ready", http.StatusServiceUnavailable)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (s *Server) deliver(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	r = r.WithContext(ctx)
 	actor, ok := s.authenticate(r.Header.Get("Authorization"))
 	if !ok {
 		http.Error(w, "authentication required", http.StatusUnauthorized)
@@ -135,12 +126,17 @@ func (s *Server) deliver(w http.ResponseWriter, r *http.Request) {
 	if !reservation.Duplicate {
 		message.EventReference = reservation.ID
 		if err := s.mailer.Send(r.Context(), message); err != nil {
-			_ = s.store.Fail(r.Context(), reservation.ID, s.now().UTC())
+			finalize, stop := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+			_ = s.store.Fail(finalize, reservation.ID, s.now().UTC())
+			stop()
 			s.logger.Warn("mail provider delivery failed", "delivery_id", reservation.ID, "provider_stage", delivery.ProviderFailureStage(err))
 			http.Error(w, "delivery unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		if err := s.store.Complete(r.Context(), reservation.ID, s.now().UTC()); err != nil {
+		finalize, stop := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+		err := s.store.Complete(finalize, reservation.ID, s.now().UTC())
+		stop()
+		if err != nil {
 			s.logger.Error("complete mail delivery failed", "delivery_id", reservation.ID)
 			http.Error(w, "delivery state unavailable", http.StatusServiceUnavailable)
 			return

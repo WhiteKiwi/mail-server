@@ -1,0 +1,216 @@
+name: Publish image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-image-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: checks
+    runs-on: whitekiwi-image-build
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/whitekiwi/mail-server
+      PLATFORM: linux/amd64
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
+    steps:
+      - name: Check out the validated commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Prepare publication metadata and check package visibility
+        id: metadata
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            if (context.ref !== 'refs/heads/main') {
+              throw new Error('Run Publish image from the main branch.');
+            }
+            if (!/^[a-f0-9]{40}$/.test(context.sha)) {
+              throw new Error('Expected a full source commit SHA.');
+            }
+
+            const {data: run} = await github.rest.actions.getWorkflowRun({
+              ...context.repo,
+              run_id: context.runId,
+            });
+            const started = new Date(run.run_started_at || run.created_at);
+            if (!Number.isFinite(started.getTime())) {
+              throw new Error('The workflow start time is unavailable.');
+            }
+            const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+              timeZone: 'Asia/Seoul',
+              year: '2-digit', month: '2-digit', day: '2-digit',
+            }).formatToParts(started).map(part => [part.type, part.value]));
+            core.setOutput('tag', `${parts.year}${parts.month}${parts.day}-${context.sha.slice(0, 7)}`);
+            core.setOutput('created', started.toISOString());
+
+            const route = '/users/{owner}/packages/{package_type}/{package_name}';
+            try {
+              const {data: pkg} = await github.request(`GET ${route}`, {
+                owner: context.repo.owner,
+                package_type: 'container',
+                package_name: 'mail-server',
+              });
+              if (pkg.visibility !== 'private') {
+                throw new Error('Refusing to publish: the existing package is not private.');
+              }
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              core.info('The first publication creates a private GHCR package.');
+            }
+
+      - name: Confirm the checked-out source
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Prepare the runner's build proxy
+        id: proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+
+          outputs = {}
+          for name in ('HTTP_PROXY', 'HTTPS_PROXY'):
+              value = os.environ.get(name, '')
+              url = urlsplit(value)
+              if (url.scheme != 'http' or url.username or url.password
+                      or url.hostname != 'image-build-proxy.arc-image-build.svc.cluster.local'
+                      or url.port != 3128 or '\n' in value or '\r' in value):
+                  raise SystemExit('The dedicated image-build proxy is not configured.')
+              outputs[name.lower()] = value
+          outputs['no_proxy'] = 'localhost,127.0.0.1,::1'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for name, value in outputs.items():
+                  output.write(f'{name}={value}\n')
+          PY
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+        with:
+          driver-opts: |
+            env.HTTP_PROXY=${{ steps.proxy.outputs.http_proxy }}
+            env.HTTPS_PROXY=${{ steps.proxy.outputs.https_proxy }}
+            env.NO_PROXY=localhost
+            env.http_proxy=${{ steps.proxy.outputs.http_proxy }}
+            env.https_proxy=${{ steps.proxy.outputs.https_proxy }}
+            env.no_proxy=localhost
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish the image
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ env.PLATFORM }}
+          build-args: |
+            REVISION=${{ github.sha }}
+            HTTP_PROXY=${{ steps.proxy.outputs.http_proxy }}
+            HTTPS_PROXY=${{ steps.proxy.outputs.https_proxy }}
+            NO_PROXY=${{ steps.proxy.outputs.no_proxy }}
+            http_proxy=${{ steps.proxy.outputs.http_proxy }}
+            https_proxy=${{ steps.proxy.outputs.https_proxy }}
+            no_proxy=${{ steps.proxy.outputs.no_proxy }}
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.metadata.outputs.tag }}
+          provenance: mode=min
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.metadata.outputs.created }}
+            org.opencontainers.image.version=${{ steps.metadata.outputs.tag }}
+
+      - name: Verify the published tag and platform
+        env:
+          IMAGE_TAG: ${{ steps.metadata.outputs.tag }}
+          PUBLISHED_DIGEST: ${{ steps.build.outputs.digest }}
+          SOURCE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PUBLISHED_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker buildx imagetools inspect "$IMAGE:$IMAGE_TAG" \
+            --format '{{json .Manifest}}' > "$RUNNER_TEMP/published-manifest.json"
+          docker buildx imagetools inspect "$IMAGE@$PUBLISHED_DIGEST" \
+            --format '{{json .Image}}' > "$RUNNER_TEMP/published-config.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = json.loads((Path(os.environ['RUNNER_TEMP']) / 'published-manifest.json').read_text())
+          if manifest.get('digest') != os.environ['PUBLISHED_DIGEST']:
+              raise SystemExit('The published tag does not resolve to the build digest.')
+          configs = json.loads((Path(os.environ['RUNNER_TEMP']) / 'published-config.json').read_text())
+          image = configs if 'os' in configs else configs.get(os.environ['PLATFORM'], {})
+          platform = f"{image.get('os')}/{image.get('architecture')}"
+          if platform != os.environ['PLATFORM']:
+              raise SystemExit('The published image does not contain the requested platform.')
+          print('Published tag, digest and platform verified.')
+          PY
+          docker pull --platform="$PLATFORM" "$IMAGE@$PUBLISHED_DIGEST"
+          pulled_revision="$(docker image inspect "$IMAGE@$PUBLISHED_DIGEST" \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+          test "$pulled_revision" = "$SOURCE_SHA"
+
+      - name: Record the publication
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          IMAGE_TAG: ${{ steps.metadata.outputs.tag }}
+          PUBLISHED_DIGEST: ${{ steps.build.outputs.digest }}
+        with:
+          script: |
+            const {data: pkg} = await github.request(
+              'GET /users/{owner}/packages/{package_type}/{package_name}', {
+                owner: context.repo.owner,
+                package_type: 'container',
+                package_name: 'mail-server',
+              },
+            );
+            if (pkg.visibility !== 'private') {
+              throw new Error('The published package is not private.');
+            }
+            const image = `${process.env.IMAGE}:${process.env.IMAGE_TAG}`;
+            const pinned = `${process.env.IMAGE}@${process.env.PUBLISHED_DIGEST}`;
+            await core.summary
+              .addHeading('Private image published')
+              .addTable([
+                [{data: 'Field', header: true}, {data: 'Value', header: true}],
+                ['Image', image],
+                ['Source commit', context.sha],
+                ['Platform', process.env.PLATFORM],
+                ['Digest', process.env.PUBLISHED_DIGEST],
+                ['Visibility', pkg.visibility],
+              ])
+              .addCodeBlock(`docker pull ${pinned}`, 'bash')
+              .addRaw('An existing date/SHA tag is overwritten. No deployment was performed.\n')
+              .write();

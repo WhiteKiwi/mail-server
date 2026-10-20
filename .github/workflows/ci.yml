@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -14,8 +15,8 @@ concurrency:
 
 jobs:
   test:
-    # Only owner-triggered code from this repository uses the persistent worker.
-    runs-on: ${{ fromJSON(github.actor == github.repository_owner && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == github.repository_owner)) && '["self-hosted","Linux","X64","whitekiwi-linux-mail-server"]' || '["ubuntu-latest"]') }}
+    # Only owner-triggered code from this repository uses the ephemeral private worker.
+    runs-on: ${{ fromJSON(github.actor == github.repository_owner && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == github.repository_owner)) && '["whitekiwi-ubuntu"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,4 +31,4 @@ jobs:
       - name: Static Go checks
         run: go vet ./...
       - name: Build the source executable
-        run: go build -trimpath ./cmd/mail-server
+        run: go build -trimpath ./cmd/...
